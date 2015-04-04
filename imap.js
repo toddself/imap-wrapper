@@ -2,7 +2,11 @@
 
 const IMAP = require('imap');
 
+const Mailbox = require('./mailbox');
 const log = require('./logger');
+
+const defaultStart = 0;
+const defaultPageSize = 30;
 
 function ImapConnection(config){
   this.config = config;
@@ -14,6 +18,7 @@ function ImapConnection(config){
     tls: true,
     debug: config.debug || false
   });
+  this.mailboxes = {};
 }
 
 ImapConnection.prototype.connect = function (cb) {
@@ -30,74 +35,34 @@ ImapConnection.prototype.connect = function (cb) {
   this.imap.connect();
 };
 
-ImapConnection.prototype.openBox = function (box, cb) {
-  this.currentBox = box;
-  const self = this;
-  this.imap.openBox(box, function(err, box){
-    if (err) {
-      log.fatal(err);
-      return;
-    }
-    self.openBox = box;
-    cb();
-  });
-};
-
-ImapConnection.prototype.closeBox = function (expunge, cb) {
-  expunge = expunge || false;
-  this.imap.closeBox(expunge, function(){
-    this.openBox = void 0;
-    this.currentBox = void 0;
-    return cb();
-  });
-};
-
-ImapConnection.prototype._list = function (items, page, cb) {
-  const start = items * page;
-  const end = start + items;
-  const seq = [start, end].join(':');
-  const opts = {
-    bodies: 'HEADER.FIELDS (FROM TO SUBJECT DATE)',
-    struct: true
-  };
-  const messageList = {};
+ImapConnection.prototype.getMailForBox = function(mailbox, options, cb) {
+  const start = options.start || defaultStart;
+  const end = (start + 1) * (options.page || defaultPageSize);
   const self = this;
 
-  this.imap.seq
-    .fetch(seq, opts)
-    .on('message', function( msg, seqno) {
-      msg.on('body', function (stream) {
-        let buffer = '';
-
-        stream.on('data', function (chunk) {
-          buffer += chunk.toString('utf8');
-        });
-
-        stream.on('end', function() {
-          messageList[seqno] = buffer;
-          buffer = '';
-        });
-      });
-    })
-    .on('error', function (err) {
-      log.fatal('Unable to obtain message list', {err: err});
-      cb(err);
-    })
-    .on('end', function () {
-      self.messageList = messageList;
-      return cb(null, messageList);
-    });
-};
-
-ImapConnection.prototype.listBox = function (box, items, page, cb) {
-  if(box !== this.currentBox || !this.openBox){
-    const self = this;
-    return this.openBox(box, function () {
-      self._list(items, page, cb);
-    });
+  if (this.mailboxes[mailbox]) {
+    return this.mailboxes[mailbox].listMail(start, end, options.headers, cb);
   }
-  this._list(items, page, cb);
+
+  this.mailboxes[mailbox] = new Mailbox(mailbox, this.imap);
+  this.mailboxes[mailbox].open(function () {
+    self.mailboxes[mailbox].listMail(start, end, options.headers, cb);
+  });
 };
 
+ImapConnection.prototype.listBoxes = function (ns, cb) {
+  if (typeof ns === 'function') {
+    cb = ns;
+    ns = undefined;
+  }
+
+  this.imap.getBoxes(ns, function(err, boxList){
+    if (err) {
+      return cb(err);
+    }
+    this.boxList = boxList;
+    cb(null, this.boxList);
+  });
+};
 
 module.exports = ImapConnection;

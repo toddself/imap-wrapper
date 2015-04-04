@@ -43,6 +43,7 @@
     "radix": true,
     "no-width": true,
     "no-extra-strict": true,
-    "quotes": "single"
+    "quotes": "single",
+    "no-return-assign": false
   }
 }
