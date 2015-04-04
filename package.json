@@ -2,7 +2,7 @@
   "name": "imap-wrapper",
   "version": "0.0.1",
   "description": "A wrapper around node-imap to provide a higher-level API",
-  "main": "index.js",
+  "main": "imap.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
